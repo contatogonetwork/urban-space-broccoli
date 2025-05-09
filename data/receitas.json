@@ -1,0 +1,47 @@
+[
+  {
+    "titulo": "Omelete Simples",
+    "ingredientes_usados": ["ovo", "sal", "queijo"],
+    "ingredientes_faltantes": [],
+    "tempo_preparo": 10,
+    "porcoes": 1,
+    "instrucoes": "Bata os ovos, adicione sal a gosto. Aqueça uma frigideira com um fio de óleo, despeje os ovos batidos. Quando começar a firmar, adicione queijo ralado. Dobre ao meio e sirva.",
+    "imagem": "https://img.cybercook.com.br/receitas/776/omelete-simples-1.jpeg"
+  },
+  {
+    "titulo": "Salada Verde",
+    "ingredientes_usados": ["alface", "tomate", "cebola", "azeite"],
+    "ingredientes_faltantes": [],
+    "tempo_preparo": 5,
+    "porcoes": 2,
+    "instrucoes": "Lave e corte a alface. Corte o tomate em cubos e a cebola em rodelas finas. Misture tudo e tempere com azeite, sal e limão a gosto.",
+    "imagem": "https://img.cybercook.com.br/receitas/42/salada-verde-1.jpeg"
+  },
+  {
+    "titulo": "Arroz com Legumes",
+    "ingredientes_usados": ["arroz", "cenoura", "ervilha", "milho", "cebola"],
+    "ingredientes_faltantes": [],
+    "tempo_preparo": 25,
+    "porcoes": 4,
+    "instrucoes": "Refogue a cebola, adicione o arroz e água. Quando estiver quase pronto, adicione os legumes e termine o cozimento. Tempere a gosto.",
+    "imagem": "https://img.cybercook.com.br/receitas/685/arroz-colorido-1.jpeg"
+  },
+  {
+    "titulo": "Suco de Laranja",
+    "ingredientes_usados": ["laranja", "açúcar", "água"],
+    "ingredientes_faltantes": [],
+    "tempo_preparo": 5,
+    "porcoes": 2,
+    "instrucoes": "Esprema as laranjas, adicione água e açúcar a gosto. Mexa bem até dissolver o açúcar.",
+    "imagem": "https://img.cybercook.com.br/receitas/605/suco-de-laranja-natural-1.jpeg"
+  },
+  {
+    "titulo": "Sanduíche Natural",
+    "ingredientes_usados": ["pão de forma", "frango", "maionese", "alface", "tomate"],
+    "ingredientes_faltantes": [],
+    "tempo_preparo": 10,
+    "porcoes": 2,
+    "instrucoes": "Desfie o frango e misture com a maionese. Corte o tomate em rodelas. Monte o sanduíche colocando o frango, alface e tomate entre as fatias de pão.",
+    "imagem": "https://img.cybercook.com.br/receitas/81/sanduiche-natural-1.jpeg"
+  }
+]

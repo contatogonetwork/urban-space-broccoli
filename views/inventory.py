@@ -64,8 +64,13 @@ def mostrar_inventario_geral(db):
     
     # Exibir dados
     if df.empty:
-        st.info("Nenhum item cadastrado ou correspondente aos filtros.")
+        st.info("Nenhum item encontrado no inventário.")
     else:
+        try:
+            st.dataframe(df, use_container_width=True)
+        except Exception as e:
+            st.error(f"Erro ao exibir inventário: {e}")
+            
         # Preparar dataframe para exibição
         df_display = df.copy()
         

@@ -32,3 +32,19 @@ from .shopping import (
     comparativo_mercados,
     analise_precos
 )
+
+# Importar novas funcionalidades de alertas
+from .alerts import (
+    mostrar_alertas,
+    mostrar_alertas_vencimento,
+    mostrar_alertas_restricoes,
+    mostrar_alertas_estoque
+)
+
+# Importar configurações
+from .settings import (
+    mostrar_configuracoes,
+    mostrar_configuracoes_gerais,
+    mostrar_backup_restauracao,
+    mostrar_configuracoes_alertas
+)

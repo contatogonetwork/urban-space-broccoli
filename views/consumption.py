@@ -74,15 +74,16 @@ def registrar_consumo(db):
             
             qtd_consumida = st.number_input(
                 f"Quantidade consumida ({unidade})",
-                min_value=0.1, 
+                min_value=0.01, 
                 max_value=qtd_max,
                 value=min(1.0, qtd_max),
-                step=0.1
+                step=0.01
             )
             
             data_consumo = st.date_input(
                 "Data do consumo",
-                value=datetime.date.today()
+                value=datetime.date.today(),
+                max_value=datetime.date.today()
             )
             
             # Calcular valores nutricionais consumidos
@@ -101,11 +102,11 @@ def registrar_consumo(db):
         # Validar antes de submeter
         erros = []
         if qtd_consumida <= 0:
-            erros.append("Quantidade consumida deve ser maior que zero")
+            erros.append("A quantidade consumida deve ser maior que zero.")
         if qtd_consumida > qtd_max:
-            erros.append(f"Quantidade máxima disponível é {qtd_max} {unidade}")
+            erros.append("A quantidade consumida não pode ser maior que o disponível.")
         if para_thomas and not pode_registrar:
-            erros.append("Verificar compatibilidade para Thomás")
+            erros.append("Não é permitido registrar consumo para Thomás neste item.")
         
         # Botão de submissão
         if st.form_submit_button("✅ Registrar Consumo"):
@@ -113,12 +114,15 @@ def registrar_consumo(db):
                 for erro in erros:
                     st.error(erro)
             else:
-                success, msg = db.registrar_consumo(item_id, qtd_consumida, para_thomas=para_thomas, data=data_consumo)
-                if success:
-                    st.success(msg)
-                    st.rerun()
-                else:
-                    st.error(msg)
+                try:
+                    sucesso, msg = db.registrar_consumo(item_id, qtd_consumida, para_thomas=para_thomas, data=data_consumo)
+                    if sucesso:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+                except Exception as e:
+                    st.error(f"Erro ao registrar consumo: {str(e)}")
 
 def mostrar_categorias(db):
     st.title("🔄 Alimentos por Categoria")
@@ -245,7 +249,7 @@ def mostrar_categorias(db):
         # Exibir dataframe
         try:
             st.dataframe(
-                df_style.data[colunas_exibir], 
+                df_display[colunas_exibir], 
                 use_container_width=True,
                 height=400,
                 column_config=config_dict
