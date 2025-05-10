@@ -1,32 +1,48 @@
-# Navegar para o diretório do projeto (se não estiver nele)
-cd /workspaces/GELADEIRA
+#!/bin/bash
+# Script de configuração e gerenciamento Git para o projeto GELADEIRA
 
-# Inicialize Git se ainda não estiver inicializado
-# (Parece que você já tem um repositório Git baseado no arquivo COMMIT_EDITMSG)
-# git init
+# Navegar para o diretório do projeto
+cd /workspaces/GELADEIRA || { echo "Diretório do projeto não encontrado"; exit 1; }
 
-# Configurar usuário e email do Git (se ainda não configurou)
-git config --global user.name "Seu Nome"
-git config --global user.email "seu-email@exemplo.com"
+# Verificar se Git já está inicializado
+if [ ! -d ".git" ]; then
+    echo "Inicializando repositório Git..."
+    git init
+    if [ $? -ne 0 ]; then
+        echo "Falha ao inicializar Git. Verifique se o Git está instalado."
+        exit 1
+    fi
+fi
 
-# Adicione todos os arquivos do projeto
+# Configurar usuário e email do Git (substituir com valores reais)
+echo "Configurando usuário Git..."
+git config --global user.name "NOME_REAL"
+git config --global user.email "EMAIL_REAL@exemplo.com"
+
+# Adicionar arquivos ao staging
+echo "Adicionando arquivos ao staging..."
 git add .
 
-# Faça o commit das alterações
+# Commit das alterações
+echo "Realizando commit das alterações..."
 git commit -m "Versão inicial do Sistema GELADEIRA"
 
-# Adicione o repositório remoto (substitua com a URL do seu repositório)
-git remote add origin https://github.com/SEU-USUARIO/geladeira
+# Verificar se o remote origin já existe
+if ! git remote | grep -q "^origin$"; then
+    echo "Adicionando repositório remoto..."
+    # Substituir com URL real do repositório
+    git remote add origin https://github.com/SEU-USUARIO-REAL/geladeira
+fi
 
-# Envie o código para o GitHub
-git push -u origin main
+# Verificar qual branch está sendo usada
+branch=$(git branch --show-current)
+if [ -z "$branch" ]; then
+    branch="main"
+    git checkout -b main
+fi
 
-Enumerating objects: X, done.
-Counting objects: 100% (X/X), done.
-Delta compression using up to Y CPU threads
-Compressing objects: 100% (Z/Z), done.
-Writing objects: 100% (X/X), AAAA bytes | BBBB KiB/s, done.
-Total X (delta Y), reused Z (delta 0), pack-reused 0
-remote: Resolving deltas: 100% (Y/Y), done.
-To https://github.com/SEU-USUARIO/geladeira
- * [new branch]      main -> main
+# Enviar para GitHub
+echo "Enviando código para o GitHub..."
+git push -u origin "$branch"
+
+echo "Operação concluída com sucesso!"

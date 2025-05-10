@@ -1,0 +1,20 @@
+2025-05-09 05:21:32,385 - root - INFO - Iniciando otimização do banco de dados...
+2025-05-09 05:21:32,391 - root - INFO - Otimização do banco de dados concluída com sucesso.
+# filepath: /workspaces/GELADEIRA/utils/validators.py
+def validar_nome(nome: str) -> bool:
+    return bool(nome.strip()) and len(nome) <= 100
+
+query = "SELECT * FROM itens WHERE nome LIKE ?"
+cursor.execute(query, (f"%{termo_busca}%",))
+
+logging.info("Item adicionado", extra={"item_id": item_id, "nome": nome})
+
+# filepath: /workspaces/GELADEIRA/tests/test_validators.py
+import unittest
+from utils.validators import validar_nome
+
+class TestValidators(unittest.TestCase):
+    def test_validar_nome(self):
+        self.assertTrue(validar_nome("Leite"))
+        self.assertFalse(validar_nome(""))
+        self.assertFalse(validar_nome(" " * 101))

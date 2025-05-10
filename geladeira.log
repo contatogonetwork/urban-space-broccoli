@@ -1,0 +1,9 @@
+2025-05-09 03:26:45,271 - root - ERROR - Falha ao inicializar banco de dados: /workspaces/GELADEIRA/db/geladeira.db
+2025-05-09 03:26:45,272 - root - INFO - Backup automático criado: /workspaces/GELADEIRA/db/backups/geladeira_backup_20250509_032645.db
+2025-05-09 03:30:26,560 - root - ERROR - Erro crítico: 'ExtendedDatabaseManager' object has no attribute 'verificar_integridade'
+2025-05-09 03:30:26,561 - root - ERROR - Falha ao inicializar banco de dados: /workspaces/GELADEIRA/db/geladeira.db
+2025-05-09 03:30:26,563 - root - INFO - Backup automático criado: /workspaces/GELADEIRA/db/backups/geladeira_backup_20250509_033026.db
+2025-05-09 03:31:44,045 - root - ERROR - Falha ao inicializar banco de dados: /workspaces/GELADEIRA/db/geladeira.db
+2025-05-09 03:31:44,048 - root - INFO - Backup automático criado: /workspaces/GELADEIRA/db/backups/geladeira_backup_20250509_033144.db
+2025-05-09 03:31:49,064 - root - ERROR - Falha ao inicializar banco de dados: /workspaces/GELADEIRA/db/geladeira.db
+2025-05-09 03:31:49,067 - root - INFO - Backup automático criado: /workspaces/GELADEIRA/db/backups/geladeira_backup_20250509_033149.db

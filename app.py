@@ -1,18 +1,81 @@
 import os
 import streamlit as st
 import traceback
-from datetime import datetime
-from db.extended_manager import ExtendedDatabaseManager
-from views import *
-from utils.constants import *
-from config import *
-from config import get_current_datetime, get_current_user
+import logging
+from datetime import datetime, timedelta
+# Corrigido: Usar o extended_database_manager que tem sido o foco da revisão
+from db.extended_database_manager import ExtendedDatabaseManager 
+# Melhoria: Importações explícitas de views
+from views.inventory import mostrar_inventario_geral, adicionar_item_form
+from views.thomas import mostrar_inventario_thomas, mostrar_perfil_thomas
+from views.consumption import mostrar_categorias, registrar_consumo
+from views.reports import mostrar_relatorios
+from views.shopping import mostrar_planejamento_feira
+from views.settings import mostrar_configuracoes
+from views.recipes import mostrar_receitas # <--- Adicionado
 
-# Configuração do ngrok para acesso externo (opcional)
-if os.getenv("SHARE_PUBLIC", "false").lower() == "true":
-    from pyngrok import ngrok
-    public_url = ngrok.connect(port=8501)
-    print(f"Aplicação disponível publicamente em: {public_url}")
+# Melhoria: Importações explícitas de utils.constants
+from utils.constants import CATEGORIAS_ALIMENTOS, UNIDADES_MEDIDA, LOCAIS_ARMAZENAMENTO
+from utils.db_optimizer import otimizar_banco_dados, realizar_backup
+from utils.validador import validar_produto, sanitizar_texto
+# Melhoria: Importações explícitas de config
+from config import DB_PATH, load_config, get_current_datetime, get_current_user
+
+# Import or define DatabaseErrorHandler
+class DatabaseErrorHandler:
+    @staticmethod
+    def handle_critical_error(db_path, error_message):
+        try:
+            # Log the error
+            logging.error(f"Critical database error: {error_message}")
+            
+            # Attempt to create a backup of the corrupted database
+            backup_success, backup_path = realizar_backup(db_path)
+            if backup_success:
+                logging.info(f"Backup of corrupted DB created successfully: {backup_path}")
+            else:
+                logging.warning(f"Failed to backup corrupted DB: {db_path}")
+
+            # Melhoria: Renomear o banco de dados corrompido em vez de remover
+            corrupted_db_path = f"{db_path}_corrupted_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            try:
+                os.rename(db_path, corrupted_db_path)
+                logging.warning(f"Corrupted database renamed to: {corrupted_db_path}")
+            except OSError as e:
+                logging.error(f"Could not rename corrupted database {db_path}: {e}")
+                try:
+                    os.remove(db_path)
+                    logging.warning(f"Corrupted database {db_path} removed as rename failed.")
+                except OSError as remove_e:
+                    logging.critical(f"Failed to remove or rename corrupted database {db_path}: {remove_e}. Manual intervention likely required.")
+                    return False
+
+            # Reinitialize the database
+            db_manager = ExtendedDatabaseManager(db_path)
+            init_success, init_msg = db_manager.inicializar_banco()
+            
+            if init_success:
+                logging.info(f"Database successfully reinitialized at {db_path}.")
+                st.warning("O banco de dados foi reinicializado devido a um problema. Os dados anteriores (exceto o último backup, se bem-sucedido) foram perdidos.")
+                return True
+            else:
+                logging.critical(f"Failed to reinitialize database after corruption: {init_msg}")
+                st.error(f"Falha crítica ao tentar recriar o banco de dados: {init_msg}")
+                return False
+        except Exception as e:
+            logging.critical(f"Failed to handle critical database error: {str(e)}\n{traceback.format_exc()}")
+            st.error("Ocorreu um erro crítico no sistema de recuperação do banco de dados.")
+            return False
+
+# Configuração de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("geladeira.log"),
+        logging.StreamHandler()
+    ]
+)
 
 # Variáveis para rodapé
 CURRENT_DATE = get_current_datetime()
@@ -26,52 +89,160 @@ st.set_page_config(
     initial_sidebar_state=os.getenv("INITIAL_SIDEBAR_STATE", "expanded")
 )
 
-# Função para verificar itens prestes a vencer
+# Função para verificar itens prestes a vencer com tratamento avançado
 def verificar_itens_vencimento(db):
     try:
-        itens_proximos = db.obter_itens_proximos_vencimento(dias=5)
-        if itens_proximos and len(itens_proximos) > 0:
-            st.warning(f"⚠️ **ATENÇÃO!** {len(itens_proximos)} item(s) irão vencer nos próximos dias!")
-            with st.expander("Ver itens próximos do vencimento"):
-                for item in itens_proximos:
+        dias_alerta = 5  # Padrão
+        try:
+            config = load_config()
+            if 'dias_alerta_vencimento' in config:
+                dias_alerta = config['dias_alerta_vencimento']
+        except Exception:
+            pass
+            
+        itens_proximos = db.obter_itens_proximos_vencimento(dias=dias_alerta)
+        
+        if not itens_proximos or len(itens_proximos) == 0:
+            return
+            
+        itens_por_urgencia = {
+            'hoje': [],
+            'amanha': [],
+            'semana': [],
+            'outro': []
+        }
+        
+        for item in itens_proximos:
+            dias = item.get('dias_ate_vencer', 0)
+            
+            if dias <= 0:
+                itens_por_urgencia['hoje'].append(item)
+            elif dias == 1:
+                itens_por_urgencia['amanha'].append(item)
+            elif dias <= 7:
+                itens_por_urgencia['semana'].append(item)
+            else:
+                itens_por_urgencia['outro'].append(item)
+        
+        total_itens = len(itens_proximos)
+        if len(itens_por_urgencia['hoje']) > 0:
+            st.error(f"🚨 **URGENTE!** {len(itens_por_urgencia['hoje'])} item(s) vencem HOJE!")
+        elif len(itens_por_urgencia['amanha']) > 0:
+            st.warning(f"⚠️ **ATENÇÃO!** {len(itens_por_urgencia['amanha'])} item(s) vencem AMANHÃ!")
+        else:
+            st.warning(f"⚠️ {total_itens} item(s) irão vencer nos próximos dias!")
+        
+        with st.expander(f"Ver {total_itens} item(s) próximos do vencimento"):
+            if itens_por_urgencia['hoje']:
+                st.markdown("### 🚨 Vencem HOJE")
+                for item in itens_por_urgencia['hoje']:
+                    st.markdown(f"**{item['nome']}**: {item['quantidade']} {item['unidade']} - {item.get('localizacao', 'Local desconhecido')}")
+                st.divider()
+            
+            if itens_por_urgencia['amanha']:
+                st.markdown("### ⚠️ Vencem AMANHÃ")
+                for item in itens_por_urgencia['amanha']:
+                    st.markdown(f"**{item['nome']}**: {item['quantidade']} {item['unidade']} - {item.get('localizacao', 'Local desconhecido')}")
+                st.divider()
+            
+            if itens_por_urgencia['semana']:
+                st.markdown("### 📅 Vencem esta semana")
+                for item in itens_por_urgencia['semana']:
                     st.markdown(f"**{item['nome']}**: Vence em {item['dias_ate_vencer']} dias ({item['data_validade']})")
+            
+            if itens_por_urgencia['outro']:
+                st.markdown("### 📆 Outros itens próximos do vencimento")
+                for item in itens_por_urgencia['outro']:
+                    st.markdown(f"**{item['nome']}**: Vence em {item['dias_ate_vencer']} dias ({item['data_validade']})")
+    
     except Exception as e:
         st.error(f"Erro ao verificar vencimentos: {str(e)}")
+        logging.error(f"Erro ao verificar vencimentos: {str(e)}")
 
-# Função para carregar o banco de dados com tratamento de erros
 @st.cache_resource(ttl=3600)
 def carregar_banco_dados(db_path):
     try:
         db_manager = ExtendedDatabaseManager(db_path)
         success, msg = db_manager.verificar_integridade()
+        
         if not success:
-            st.warning(f"Alerta do banco de dados: {msg}")
+            st.error(f"Problema com o banco de dados: {msg}")
+            if "corrompido" in msg.lower() or "danificado" in msg.lower():
+                if DatabaseErrorHandler.handle_critical_error(db_path, msg):
+                    st.success("Recuperação realizada. Alguns dados podem ter sido perdidos.")
+                    db_manager = ExtendedDatabaseManager(db_path)
+                else:
+                    st.error("Falha na recuperação. O aplicativo pode estar instável.")
+            else:
+                st.warning("Tentando inicializar banco de dados...")
+                init_success, init_msg = db_manager.inicializar_banco()
+                if not init_success:
+                    st.error(f"Falha ao inicializar banco: {init_msg}")
+                    return None
+        
         return db_manager
     except Exception as e:
-        st.error(f"Erro ao conectar ao banco de dados: {str(e)}")
-        st.error("A aplicação pode não funcionar corretamente. Verifique a conexão com o banco.")
+        st.error(f"Erro crítico ao conectar ao banco de dados: {str(e)}")
+        st.error("A aplicação não pode funcionar corretamente. Verifique a conexão com o banco.")
+        st.code(traceback.format_exc())
         return None
 
 def main():
-    # Inicialização do tema (claro/escuro)
-    if "tema" not in st.session_state:
-        st.session_state.tema = "claro"
+    """
+    Main application function for the inventory management system.
+    This function initializes the application, sets up the user interface,
+    and handles navigation between different sections of the app.
+    Key responsibilities:
+    - Initializes session state and theme settings
+    - Connects to the database and handles connection errors
+    - Performs periodic database integrity checks
+    - Sets up the sidebar with search functionality and navigation options
+    - Provides backup and restore functionality
+    - Displays version and user information
+    - Checks for items nearing expiration
+    - Routes to the appropriate view based on user selection
+    Error handling:
+    - Database connection errors trigger automatic backup attempts
+    - Critical initialization errors are displayed to the user
+    - Page rendering errors are caught and displayed with stack traces
+    Returns:
+        None: The function exits early if critical initialization fails
+    """
+    try:
+        if "tema" not in st.session_state:
+            st.session_state.tema = "claro"
+        
+        if "db" not in st.session_state:
+            with st.spinner("Conectando ao banco de dados..."):
+                db_manager = carregar_banco_dados(DB_PATH)
+                if db_manager:
+                    st.session_state.db = db_manager
+                    logging.info(f"Banco de dados inicializado com sucesso: {DB_PATH}")
+                else:
+                    st.error("Não foi possível inicializar o banco de dados. Verifique os logs.")
+                    logging.error(f"Falha ao inicializar banco de dados: {DB_PATH}")
+                    try:
+                        backup_success, backup_path = realizar_backup(DB_PATH)
+                        if backup_success:
+                            st.info(f"Backup automático criado em: {backup_path}")
+                            logging.info(f"Backup automático criado: {backup_path}")
+                    except Exception as backup_error:
+                        logging.error(f"Falha no backup automático: {str(backup_error)}")
+                    return
+        
+        db = st.session_state.db
     
-    # Inicialização do banco de dados com a classe estendida e cache
-    if "db" not in st.session_state:
-        with st.spinner("Conectando ao banco de dados..."):
-            db_manager = carregar_banco_dados(DB_PATH)
-            if db_manager:
-                st.session_state.db = db_manager
-            else:
-                st.error("Não foi possível inicializar o banco de dados. Verifique os logs.")
-                return
+    except Exception as e:
+        st.error(f"Erro crítico na inicialização: {str(e)}")
+        logging.critical(f"Erro crítico na inicialização: {str(e)}")
+        st.code(traceback.format_exc())
+        return
     
-    db = st.session_state.db
-    
-    # Verificação de saúde do banco
-    if "ultima_verificacao" not in st.session_state or \
-       (datetime.now() - st.session_state.ultima_verificacao).total_seconds() > 3600:
+    # Initialize ultima_verificacao if it doesn't exist
+    if "ultima_verificacao" not in st.session_state:
+        st.session_state.ultima_verificacao = datetime.now() - timedelta(hours=2)  # Force first verification
+        
+    if (datetime.now() - st.session_state.ultima_verificacao).total_seconds() > 3600:
         try:
             success, msg = db.verificar_integridade()
             st.session_state.ultima_verificacao = datetime.now()
@@ -80,15 +251,18 @@ def main():
         except Exception as e:
             st.error(f"Erro na verificação periódica: {str(e)}")
     
-    # Sidebar
     with st.sidebar:
-        st.title("🛒 Menu")
-        
-        # Barra de pesquisa global
-        st.text_input("🔍 Busca rápida:", 
-                     key="busca_global", 
-                     placeholder="Digite para buscar...",
-                     help="Busque produtos no inventário")
+        st.title("🛒 Menu Principal")
+
+        # Breadcrumbs para navegação
+        st.markdown("### 🧭 Navegação Atual")
+        st.caption("Você está em: Configurações > Alertas")
+
+        st.text_input(
+            "🔍 Busca rápida:", 
+            key="busca_global", 
+            placeholder="Digite para buscar...",
+            help="Busque produtos no inventário pelo nome ou categoria.")
         
         if st.session_state.busca_global and len(st.session_state.busca_global) > 2:
             termo = st.session_state.busca_global
@@ -99,12 +273,11 @@ def main():
                     for item in resultados:
                         if st.button(f"{item['nome']} ({item['quantidade']} {item['unidade']})", key=f"btn_{item['id']}"):
                             st.session_state.item_selecionado = item['id']
-                            st.session_state.page = "Inventário Geral"
+                            st.session_state.page = "📋 Inventário Geral"
                             st.rerun()
                 else:
                     st.info(f"Nenhum resultado encontrado para '{termo}'")
         
-        # Opções de navegação
         st.subheader("Navegação")
         page = st.radio(
             "Escolha uma opção:",
@@ -116,117 +289,61 @@ def main():
              "📝 Registrar Consumo",
              "🛒 Fazer Feira",
              "➕ Adicionar Item",
-             "⚙️ Configurações", "🍽️ Receitas"]
-        )
+             "⚙️ Configurações", "🍽️ Receitas"
+            ],
+            help="Navegue entre as seções do sistema.")
         
         st.divider()
         
-        # Backup e restauração na sidebar
         st.subheader("📤 Backup/Restauração")
         
         col1, col2 = st.columns(2)
         with col1:
             if st.button("📤 Backup", use_container_width=True):
-                st.session_state.page = "Configurações"
+                st.session_state.page = "⚙️ Configurações"
                 st.rerun()
         
         with col2:
             if st.button("📥 Restaurar", use_container_width=True):
-                st.session_state.page = "Configurações"
+                st.session_state.page = "⚙️ Configurações"
                 st.rerun()
         
-        # Footer com mais informações
         st.divider()
         st.caption(f"Versão: {APP_VERSION}")
         st.caption(f"Data: {CURRENT_DATE}")
         st.caption(f"Usuário: {CURRENT_USER}")
     
-    # Alertas de vencimento no topo da página principal
+    st.markdown("# ⚙️ Configurações Gerais")
+    st.markdown("## 🔔 Alertas de Vencimento")
+
     verificar_itens_vencimento(db)
     
-    # Corpo principal baseado na navegação
     try:
-        if page == "📋 Inventário Geral":
+        # Use session state page if set, otherwise use radio selection
+        current_page = st.session_state.get('page', page)
+        if current_page == "📋 Inventário Geral":
             mostrar_inventario_geral(db)
-        elif page == "👶 Thomás":
+        elif current_page == "👶 Thomás":
             mostrar_inventario_thomas(db)
-        elif page == "👶 Perfil Thomás":
+        elif current_page == "👶 Perfil Thomás":
             mostrar_perfil_thomas(db)
-        elif page == "🔄 Categorias":
-            mostrar_categorias(db)
-        elif page == "📊 Relatórios":
+        elif current_page == "🔄 Categorias":
+            mostrar_categorias(db) 
+        elif current_page == "📊 Relatórios":
             mostrar_relatorios(db)
-        elif page == "📝 Registrar Consumo":
+        elif current_page == "📝 Registrar Consumo":
             registrar_consumo(db)
-        elif page == "🛒 Fazer Feira":
+        elif current_page == "🛒 Fazer Feira":
             mostrar_planejamento_feira(db)
-        elif page == "➕ Adicionar Item":
+        elif current_page == "➕ Adicionar Item":
             adicionar_item_form(db)
-        elif page == "⚙️ Configurações":
+        elif current_page == "⚙️ Configurações":
             mostrar_configuracoes(db)
-        elif page == "🍽️ Receitas":
+        elif current_page == "🍽️ Receitas":
             mostrar_receitas(db)
     except Exception as e:
         st.error(f"Erro ao carregar a página {page}: {str(e)}")
         st.error("Por favor, recarregue a página ou contate o suporte.")
-        st.code(traceback.format_exc())
-
-def mostrar_receitas(db):
-    """Exibe receitas sugeridas com base no inventário"""
-    st.title("🍽️ Receitas Sugeridas")
-    
-    try:
-        # Carregar inventário
-        df = db.carregar_inventario()
-        
-        if df.empty:
-            st.info("Inventário vazio. Adicione itens para obter sugestões de receitas.")
-            return
-            
-        # Importar funções de receitas
-        from utils.assistente import sugerir_receitas, gerar_lista_compras_para_receitas
-        
-        # Sugere receitas
-        receitas = sugerir_receitas(df)
-        
-        if not receitas:
-            st.info("Não foi possível obter sugestões de receitas com base no seu inventário atual.")
-            return
-            
-        # Exibir cada receita
-        for r in receitas:
-            st.subheader(r.get("titulo", "-"))
-            
-            if r.get("imagem"):
-                st.image(r["imagem"], width=200)
-                
-            info = []
-            if r.get("tempo_preparo"):
-                info.append(f"⏱️ {r['tempo_preparo']} min")
-            if r.get("porcoes"):
-                info.append(f"Porções: {r['porcoes']}")
-                
-            if info:
-                st.write(" • ".join(info))
-                
-            if r.get("instrucoes"):
-                st.markdown(r["instrucoes"])
-                
-            faltantes = r.get("ingredientes_faltantes", [])
-            if faltantes:
-                st.write("**Ingredientes faltantes:**", ", ".join(faltantes))
-                
-            st.write("---")
-            
-        # Exibir lista de compras complementar
-        lista = gerar_lista_compras_para_receitas(receitas, df)
-        if lista:
-            st.subheader("🛒 Lista de compras complementar")
-            import pandas as pd
-            st.table(pd.DataFrame(lista))
-            
-    except Exception as e:
-        st.error(f"Erro ao processar receitas: {str(e)}")
         st.code(traceback.format_exc())
 
 if __name__ == "__main__":
