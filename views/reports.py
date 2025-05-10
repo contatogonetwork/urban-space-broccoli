@@ -343,3 +343,14 @@ def mostrar_relatorio_nutricional(db):
         st.markdown(f'<div style="{estilo_saude_cor(2)}; padding: 10px; border-radius: 5px;">Intermediário</div>', unsafe_allow_html=True)
     with col3:
         st.markdown(f'<div style="{estilo_saude_cor(3)}; padding: 10px; border-radius: 5px;">Alto impacto</div>', unsafe_allow_html=True)
+
+def estilo_saude_cor(nivel):
+    """Retorna o estilo CSS para o nível de saúde indicado"""
+    if nivel == 1:  # Saudável
+        return "background-color: #d5f5d5; color: #1e6f50; border-left: 3px solid #4caf50"
+    elif nivel == 2:  # Intermediário
+        return "background-color: #fff4cc; color: #806600; border-left: 3px solid #ffcc00"
+    elif nivel == 3:  # Alto impacto
+        return "background-color: #ffcccc; color: #cc0000; border-left: 3px solid #cc0000"
+    else:
+        return "background-color: #f0f2f6; color: #444444"

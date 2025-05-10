@@ -1,287 +1,202 @@
-import streamlit as st
-import pandas as pd
-import datetime
-import traceback
-from utils.formatters import *
-from utils.constants import *
-# Funções de nutrição centralizadas em utils.nutrition
-
-def mostrar_inventario_thomas(db):
-    st.title("👶 Inventário Thomás")
-    
-    # Descrição da área
-    st.markdown("""
-    Esta área é dedicada ao gerenciamento dos alimentos adequados para Thomás, 
-    que possui restrições alimentares específicas.
-    """)
-    
-    try:
-        # Carregar dados apenas de Thomas
-        df = db.carregar_inventario(apenas_thomas=True)
-        
-        # Filtros
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            filtro_nome = st.text_input("🔍 Filtrar por nome:", key="filtro_nome_thomas")
-        with col2:
-            localizacoes = sorted(df["Localização"].unique()) if not df.empty else []
-            filtro_local = st.multiselect("📍 Filtrar por localização:", options=localizacoes, key="filtro_local_thomas")
-        with col3:
-            categorias = sorted(df["Categoria"].unique()) if not df.empty and "Categoria" in df.columns else []
-            filtro_categoria = st.multiselect("🏷️ Filtrar por categoria:", options=categorias, key="filtro_categoria_thomas")
-        
-        # Aplicar filtros
-        if not df.empty:
-            if filtro_nome:
-                df = df[df["Nome"].str.contains(filtro_nome, case=False)]
-            if filtro_local:
-                df = df[df["Localização"].isin(filtro_local)]
-            if filtro_categoria and "Categoria" in df.columns:
-                df = df[df["Categoria"].isin(filtro_categoria)]
-        
-        # Exibir dados
-        if df.empty:
-            st.info("Nenhum item cadastrado para Thomás.")
-            st.markdown("""
-                Para adicionar itens ao inventário de Thomás:
-                1. Vá para a aba "Inventário Geral"
-                2. Selecione um item e clique em "⭐ Thomas"
-                
-                Ou adicione um novo item marcando a opção "Item adequado para Thomás"
-            """)
-        else:
-            # Preparar dataframe para exibição
-            df_display = df.copy()
-            
-            # Aplicar formatação
-            if "Contém Leite" in df_display.columns:
-                df_display["Contém Leite"] = df_display["Contém Leite"].apply(format_leite_status)
-            if "Compatibilidade Thomas" in df_display.columns:
-                df_display["Compatibilidade Thomas"] = df_display["Compatibilidade Thomas"].apply(format_compatibilidade)
-            
-            # Selecionar colunas para exibição baseado nas disponíveis
-            available_columns = df_display.columns.tolist()
-            default_columns = ["ID", "Nome", "Compatibilidade Thomas"]
-            
-            if "Contém Leite" in available_columns:
-                default_columns.append("Contém Leite")
-                
-            default_columns.extend(["Quantidade", "Unidade", "Localização"])
-            
-            if "Categoria" in available_columns:
-                default_columns.append("Categoria")
-                
-            default_columns.extend(["Validade", "Dias Até Vencer"])
-            
-            # Adicionar informações nutricionais relevantes para Thomas
-            nutrientes_thomas = [
-                "Proteínas (g)", "Cálcio (mg)", "Vitamina D (mcg)", "Ferro (mg)", "Vitamina C (mg)"
-            ]
-            
-            for nutriente in nutrientes_thomas:
-                if nutriente in available_columns:
-                    default_columns.append(nutriente)
-            
-            if "Nível Saúde" in available_columns:
-                default_columns.append("Nível Saúde")
-                
-            # Filtrar colunas existentes
-            colunas_exibir = [col for col in default_columns if col in available_columns]
-            
-            # Aplicar estilos possíveis
-            styling_dict = {}
-            if "Dias Até Vencer" in available_columns:
-                styling_dict["Dias Até Vencer"] = highlight_expiration
-            if "Quantidade" in available_columns:
-                styling_dict["Quantidade"] = highlight_quantity
-            if "Nível Saúde" in available_columns:
-                styling_dict["Nível Saúde"] = highlight_health
-                
-            # Criar estilo
-            df_style = df_display.style
-            for col, style_func in styling_dict.items():
-                df_style = df_style.applymap(style_func, subset=[col])
-            
-            # Configuração de colunas
-            config_dict = {}
-            if "ID" in colunas_exibir:
-                config_dict["ID"] = st.column_config.NumberColumn("ID", width="small")
-            if "Nome" in colunas_exibir:
-                config_dict["Nome"] = st.column_config.TextColumn("Nome", width="medium")
-            if "Compatibilidade Thomas" in colunas_exibir:
-                config_dict["Compatibilidade Thomas"] = st.column_config.TextColumn(
-                    "Compatibilidade", 
-                    width="small", 
-                    help="🟢=Seguro, 🟡=Verificar, 🔴=Não recomendado"
-                )
-            if "Contém Leite" in colunas_exibir:
-                config_dict["Contém Leite"] = st.column_config.TextColumn("🥛 Leite", width="small", help="Contém derivados lácteos")
-            if "Quantidade" in colunas_exibir:
-                config_dict["Quantidade"] = st.column_config.NumberColumn("Quantidade", format="%.2f")
-            if "Unidade" in colunas_exibir:
-                config_dict["Unidade"] = st.column_config.TextColumn("Unidade", width="small")
-            if "Localização" in colunas_exibir:
-                config_dict["Localização"] = st.column_config.TextColumn("Localização")
-            if "Categoria" in colunas_exibir:
-                config_dict["Categoria"] = st.column_config.TextColumn("Categoria")
-            if "Validade" in colunas_exibir:
-                config_dict["Validade"] = st.column_config.DateColumn("Validade", format="DD/MM/YYYY")
-            if "Dias Até Vencer" in colunas_exibir:
-                config_dict["Dias Até Vencer"] = st.column_config.ProgressColumn(
-                    "Dias Até Vencer",
-                    format="%d dias",
-                    min_value=0,
-                    max_value=30
-                )
-            if "Nível Saúde" in colunas_exibir:
-                config_dict["Nível Saúde"] = st.column_config.NumberColumn(
-                    "Nível Saúde",
-                    format="%d",
-                    help="1=Saudável, 2=Intermediário, 3=Alto impacto"
-                )
-                
-            # Configurar colunas nutricionais
-            for nutriente in nutrientes_thomas:
-                if nutriente in colunas_exibir:
-                    config_dict[nutriente] = st.column_config.NumberColumn(nutriente, format="%.1f")
-            
-            # Exibir dataframe com tratamento de erro melhorado
-            try:
-                st.dataframe(
-                    df_style.data[colunas_exibir], 
-                    use_container_width=True,
-                    height=400,
-                    column_config=config_dict
-                )
-            except Exception as e:
-                st.error(f"Erro ao exibir tabela: {str(e)}")
-                st.dataframe(df_display[colunas_exibir])
-            
-            # Legenda de compatibilidade
-            with st.expander("ℹ️ Legenda de compatibilidade para Thomás"):
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.markdown('<div style="background-color: #d5f5d5; color: #1e6f50; padding: 10px; border-left: 3px solid #4caf50; border-radius: 5px;">🟢 Seguro para Thomás</div>', unsafe_allow_html=True)
-                with col2:
-                    st.markdown('<div style="background-color: #fff4cc; color: #806600; padding: 10px; border-left: 3px solid #ffcc00; border-radius: 5px;">🟡 Verificar ingredientes</div>', unsafe_allow_html=True)
-                with col3:
-                    st.markdown('<div style="background-color: #ffcccc; color: #cc0000; padding: 10px; border-left: 3px solid #cc0000; border-radius: 5px;">🔴 Não recomendado</div>', unsafe_allow_html=True)
-            
-            # Alertas para itens com leite
-            itens_leite = df[df["Contém Leite"] == 1] if "Contém Leite" in df.columns else pd.DataFrame()
-            if not itens_leite.empty:
-                st.warning(f"⚠️ **Atenção!** {len(itens_leite)} item(s) contém leite ou derivados.")
-                with st.expander("Ver itens com leite"):
-                    for _, row in itens_leite.iterrows():
-                        st.write(f"- {row['Nome']}")
-            
-            # Consumo de Thomas com validação melhorada
-            st.subheader("📝 Registrar Consumo de Thomás")
-            
-            with st.form("form_consumo_thomas"):
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    item_id = st.selectbox(
-                        "Selecione o item consumido", 
-                        options=df["ID"].tolist(),
-                        format_func=lambda x: df[df["ID"] == x]["Nome"].values[0]
-                    )
-                    
-                    # Mostrar compatibilidade do item selecionado
-                    item_comp = df[df["ID"] == item_id]["Compatibilidade Thomas"].values[0]
-                    comp_icon = format_compatibilidade(item_comp)
-                    
-                    if item_comp == 0:  # Não recomendado
-                        st.error(f"{comp_icon} Item não recomendado para Thomás!")
-                        confirma_risco = st.checkbox("✓ Confirmo que este item é seguro para Thomás apesar das restrições", key="confirma_risco")
-                    elif item_comp == 1:  # Verificar
-                        st.warning(f"{comp_icon} Verifique os ingredientes antes de servir a Thomás.")
-                        confirma_risco = st.checkbox("✓ Confirmo que verifiquei os ingredientes", key="confirma_verificacao")
-                    else:  # Seguro
-                        st.success(f"{comp_icon} Item seguro para Thomás.")
-                        confirma_risco = True
-                    
-                with col2:
-                    item_selecionado = df[df["ID"] == item_id]
-                    unidade = item_selecionado["Unidade"].values[0] if "Unidade" in item_selecionado.columns else "unidade"
-                    qtd_max = float(item_selecionado["Quantidade"].values[0])
-                    
-                    qtd_consumida = st.number_input(
-                        f"Quantidade consumida ({unidade})",
-                        min_value=0.1, 
-                        max_value=qtd_max,
-                        value=min(1.0, qtd_max),
-                        step=0.1
-                    )
-                    
-                    # Nutrientes consumidos em destaque
-                    nutrientes_info = []
-                    if "Proteínas (g)" in item_selecionado.columns and pd.notna(item_selecionado["Proteínas (g)"].values[0]):
-                        proteina_cons = float(item_selecionado["Proteínas (g)"].values[0]) * qtd_consumida / 100
-                        nutrientes_info.append(f"Proteínas: {proteina_cons:.1f}g")
-                    
-                    if "Cálcio (mg)" in item_selecionado.columns and pd.notna(item_selecionado["Cálcio (mg)"].values[0]):
-                        calcio_cons = float(item_selecionado["Cálcio (mg)"].values[0]) * qtd_consumida / 100
-                        nutrientes_info.append(f"Cálcio: {calcio_cons:.1f}mg")
-                        
-                    if "Ferro (mg)" in item_selecionado.columns and pd.notna(item_selecionado["Ferro (mg)"].values[0]):
-                        ferro_cons = float(item_selecionado["Ferro (mg)"].values[0]) * qtd_consumida / 100
-                        nutrientes_info.append(f"Ferro: {ferro_cons:.1f}mg")
-                        
-                    if nutrientes_info:
-                        st.info("\n".join(nutrientes_info))
-                    
-                with col3:
-                    data_consumo = st.date_input(
-                        "Data do consumo",
-                        value=datetime.date.today(),
-                        max_value=datetime.date.today()  # Impede datas futuras
-                    )
-                
-                # Validação antes de enviar
-                submit_disabled = (item_comp == 0 or item_comp == 1) and not confirma_risco
-                submit_button = st.form_submit_button("✅ Registrar Consumo", disabled=submit_disabled)
-                
-                if submit_button:
-                    try:
-                        success, msg = db.registrar_consumo(item_id, qtd_consumida, para_thomas=True, data=data_consumo)
-                        if success:
-                            st.success(msg)
-                            # Registrar nutrientes consumidos para análise
-                            try:
-                                db.registrar_nutrientes_consumidos(item_id, qtd_consumida, para_thomas=True, data=data_consumo)
-                            except:
-                                st.warning("Registro de nutrientes não foi completado. A análise nutricional pode ficar incompleta.")
-                            st.rerun()
-                        else:
-                            st.error(msg)
-                    except Exception as e:
-                        st.error(f"Erro ao registrar consumo: {str(e)}")
-                        st.error("Por favor, tente novamente ou contate o suporte.")
-                        
-                # Dica para usuário quando tentando registrar item não recomendado
-                if item_comp == 0 and not confirma_risco:
-                    st.info("👆 Marque a opção acima para permitir o registro")
-
-    except Exception as e:
-        st.error(f"Ocorreu um erro ao carregar o inventário de Thomás: {str(e)}")
-        st.error("Por favor, atualize a página ou contate o suporte se o problema persistir.")
-        st.code(traceback.format_exc())
-
-# Stubs para páginas ainda não implementadas
-def mostrar_perfil_thomas(db):
-    st.title("👶 Perfil de Thomás")
-    st.info("Em construção: perfil detalhado de Thomás.")
-
-def mostrar_restricoes_alimentares(db):
-    st.title("🚫 Restrições Alimentares de Thomás")
-    st.info("Em construção: restrições alimentares de Thomas.")
-
-def mostrar_necessidades_nutricionais(db):
-    st.title("🥗 Necessidades Nutricionais de Thomás")
-    st.info("Em construção: necessidades nutricionais de Thomas.")
-
 def mostrar_analise_nutricional_thomas(db):
     st.title("📊 Análise Nutricional de Thomás")
-    st.info("Em construção: análise nutricional de Thomas.")
+    
+    try:
+        # Período da análise
+        col1, col2 = st.columns(2)
+        with col1:
+            periodo = st.selectbox(
+                "Período de análise:",
+                options=["Últimos 7 dias", "Últimos 30 dias", "Este mês", "Mês passado", "Personalizado"],
+                key="periodo_analise"
+            )
+        
+        if periodo == "Personalizado":
+            with col2:
+                data_inicio = st.date_input(
+                    "Data inicial",
+                    value=datetime.date.today() - datetime.timedelta(days=7),
+                    max_value=datetime.date.today()
+                )
+                data_fim = st.date_input(
+                    "Data final",
+                    value=datetime.date.today(),
+                    max_value=datetime.date.today()
+                )
+        else:
+            # Definir datas com base no período selecionado
+            hoje = datetime.date.today()
+            if periodo == "Últimos 7 dias":
+                data_inicio = hoje - datetime.timedelta(days=7)
+                data_fim = hoje
+            elif periodo == "Últimos 30 dias":
+                data_inicio = hoje - datetime.timedelta(days=30)
+                data_fim = hoje
+            elif periodo == "Este mês":
+                data_inicio = hoje.replace(day=1)
+                data_fim = hoje
+            elif periodo == "Mês passado":
+                primeiro_dia_mes_atual = hoje.replace(day=1)
+                ultimo_dia_mes_anterior = primeiro_dia_mes_atual - datetime.timedelta(days=1)
+                data_inicio = ultimo_dia_mes_anterior.replace(day=1)
+                data_fim = ultimo_dia_mes_anterior
+        
+        # Obter dados de consumo nutricional
+        df_consumo = db.obter_consumo_nutricional_thomas(data_inicio, data_fim)
+        
+        if df_consumo is None or df_consumo.empty:
+            st.info(f"Nenhum registro de consumo encontrado para o período de {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}.")
+            return
+        
+        # Mostrar resumo de consumo
+        st.subheader(f"Resumo do período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}")
+        
+        # Métricas principais em cards
+        col1, col2, col3, col4 = st.columns(4)
+        
+        # Valores diários recomendados aproximados para um bebê (ajustar conforme a idade real)
+        proteina_rec = 13  # g/dia
+        calcio_rec = 500   # mg/dia
+        ferro_rec = 7      # mg/dia
+        vit_c_rec = 35     # mg/dia
+        
+        # Calcular médias diárias
+        dias_periodo = (data_fim - data_inicio).days + 1  # +1 para incluir o dia final
+        
+        with col1:
+            if "Proteínas (g)" in df_consumo.columns:
+                proteina_total = df_consumo["Proteínas (g)"].sum()
+                proteina_diaria = proteina_total / dias_periodo
+                porcentagem = min(100, int(proteina_diaria / proteina_rec * 100))
+                st.metric(
+                    "Proteínas", 
+                    f"{proteina_diaria:.1f}g/dia", 
+                    f"{porcentagem}% do recomendado"
+                )
+                
+        with col2:
+            if "Cálcio (mg)" in df_consumo.columns:
+                calcio_total = df_consumo["Cálcio (mg)"].sum()
+                calcio_diario = calcio_total / dias_periodo
+                porcentagem = min(100, int(calcio_diario / calcio_rec * 100))
+                st.metric(
+                    "Cálcio", 
+                    f"{calcio_diario:.1f}mg/dia", 
+                    f"{porcentagem}% do recomendado"
+                )
+                
+        with col3:
+            if "Ferro (mg)" in df_consumo.columns:
+                ferro_total = df_consumo["Ferro (mg)"].sum()
+                ferro_diario = ferro_total / dias_periodo
+                porcentagem = min(100, int(ferro_diario / ferro_rec * 100))
+                st.metric(
+                    "Ferro", 
+                    f"{ferro_diario:.1f}mg/dia", 
+                    f"{porcentagem}% do recomendado"
+                )
+                
+        with col4:
+            if "Vitamina C (mg)" in df_consumo.columns:
+                vit_c_total = df_consumo["Vitamina C (mg)"].sum()
+                vit_c_diaria = vit_c_total / dias_periodo
+                porcentagem = min(100, int(vit_c_diaria / vit_c_rec * 100))
+                st.metric(
+                    "Vitamina C", 
+                    f"{vit_c_diaria:.1f}mg/dia", 
+                    f"{porcentagem}% do recomendado"
+                )
+        
+        # Gráficos de consumo
+        st.subheader("Consumo ao longo do tempo")
+        
+        # Preparar dados para gráficos
+        if "Data" in df_consumo.columns:
+            df_diario = df_consumo.groupby("Data").sum().reset_index()
+            df_diario["Data"] = pd.to_datetime(df_diario["Data"])
+            
+            # Gráfico de consumo de nutrientes
+            import plotly.express as px
+            
+            if "Proteínas (g)" in df_diario.columns:
+                fig_proteina = px.line(
+                    df_diario, 
+                    x="Data", 
+                    y="Proteínas (g)",
+                    title="Consumo de Proteínas",
+                    markers=True,
+                    labels={"Proteínas (g)": "Proteínas (g)", "Data": ""}
+                )
+                fig_proteina.add_hline(y=proteina_rec, line_dash="dash", line_color="green", annotation_text="Recomendado")
+                st.plotly_chart(fig_proteina, use_container_width=True)
+                
+            if "Cálcio (mg)" in df_diario.columns and "Ferro (mg)" in df_diario.columns:
+                # Gráfico combinado de cálcio e ferro
+                fig_minerais = px.line(
+                    df_diario, 
+                    x="Data", 
+                    y=["Cálcio (mg)", "Ferro (mg)"],
+                    title="Consumo de Minerais",
+                    markers=True,
+                    labels={"value": "Quantidade", "Data": "", "variable": "Mineral"}
+                )
+                st.plotly_chart(fig_minerais, use_container_width=True)
+        
+        # Tabela detalhada de alimentos consumidos
+        st.subheader("Detalhamento do consumo")
+        
+        if "Nome" in df_consumo.columns:
+            # Agrupar por alimento
+            alimentos_consumo = df_consumo.groupby("Nome").agg({
+                "Quantidade": "sum",
+                "Proteínas (g)": "sum",
+                "Cálcio (mg)": "sum",
+                "Ferro (mg)": "sum",
+                "Vitamina C (mg)": "sum"
+            }).reset_index().sort_values(by="Quantidade", ascending=False)
+            
+            # Filtrar apenas colunas não nulas
+            colunas_validas = ["Nome", "Quantidade"] + [col for col in ["Proteínas (g)", "Cálcio (mg)", "Ferro (mg)", "Vitamina C (mg)"] 
+                                                     if col in alimentos_consumo.columns and not alimentos_consumo[col].isna().all()]
+            
+            st.dataframe(
+                alimentos_consumo[colunas_validas],
+                use_container_width=True
+            )
+            
+        # Recomendações baseadas na análise
+        st.subheader("Recomendações")
+        
+        # Verificar deficiências
+        recomendacoes = []
+        
+        if "Proteínas (g)" in df_consumo.columns:
+            proteina_diaria = df_consumo["Proteínas (g)"].sum() / dias_periodo
+            if proteina_diaria < proteina_rec * 0.7:  # Menos de 70% do recomendado
+                recomendacoes.append("Aumentar o consumo de proteínas (carnes, ovos, leguminosas).")
+        
+        if "Cálcio (mg)" in df_consumo.columns:
+            calcio_diario = df_consumo["Cálcio (mg)"].sum() / dias_periodo
+            if calcio_diario < calcio_rec * 0.7:
+                recomendacoes.append("Aumentar o consumo de alimentos ricos em cálcio (vegetais verde-escuros, tofu).")
+        
+        if "Ferro (mg)" in df_consumo.columns:
+            ferro_diario = df_consumo["Ferro (mg)"].sum() / dias_periodo
+            if ferro_diario < ferro_rec * 0.7:
+                recomendacoes.append("Aumentar o consumo de alimentos ricos em ferro (carnes, feijões, folhas verde-escuras).")
+        
+        if "Vitamina C (mg)" in df_consumo.columns:
+            vit_c_diaria = df_consumo["Vitamina C (mg)"].sum() / dias_periodo
+            if vit_c_diaria < vit_c_rec * 0.7:
+                recomendacoes.append("Aumentar o consumo de frutas cítricas e vegetais ricos em vitamina C.")
+        
+        if recomendacoes:
+            for rec in recomendacoes:
+                st.info(rec)
+        else:
+            st.success("Os níveis nutricionais estão adequados às necessidades de Thomás! Continue com a alimentação atual.")
+            
+    except Exception as e:
+        st.error(f"Erro na análise nutricional: {str(e)}")
+        st.error("Por favor, verifique se os dados de consumo estão sendo registrados corretamente.")
+        st.code(traceback.format_exc())

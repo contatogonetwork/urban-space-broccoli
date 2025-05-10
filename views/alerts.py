@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
-import datetime
-from utils.formatters import *
-from utils.constants import *
+from datetime import date
 
 def mostrar_alertas(db):
     st.title("🔔 Sistema de Alertas")
@@ -42,7 +40,7 @@ def mostrar_alertas_vencimento(db):
         # Calcular dias até vencer
         df_pereciveis['Dias Até Vencer'] = (
             pd.to_datetime(df_pereciveis['Validade']).dt.date
-            - datetime.date.today()
+            - date.today()
         ).dt.days
         
         # Filtrar por dias até vencer

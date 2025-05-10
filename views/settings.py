@@ -53,7 +53,8 @@ def mostrar_configuracoes_gerais(db):
         "Alertar sobre vencimentos com quantos dias de antecedência", 
         min_value=1, 
         max_value=30, 
-        value=config.get("dias_alerta_vencimento", 7)
+        value=config.get("dias_alerta_vencimento", 7),
+        help="Defina o número de dias antes do vencimento para receber alertas."
     )
     
     nivel_alerta_quantidade = st.slider(
@@ -85,7 +86,7 @@ def mostrar_configuracoes_gerais(db):
     )
     
     # Botão para salvar configurações
-    if st.button("💾 Salvar Configurações"):
+    if st.button("💾 Salvar Configurações", use_container_width=True):
         # Atualizar dicionário de configurações
         novas_config = {
             "tema": tema,
@@ -126,6 +127,19 @@ def mostrar_configuracoes_gerais(db):
         except Exception as e:
             st.error(f"❌ Erro: {str(e)}")
             st.code(traceback.format_exc())
+    
+    # Adicionar hover effects
+    st.markdown(
+        """
+        <style>
+        button:hover {
+            background-color: #f0f0f0;
+            color: #333;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
 def mostrar_backup_restauracao(db):
     st.header("💾 Backup e Restauração")
@@ -136,197 +150,122 @@ def mostrar_backup_restauracao(db):
     with col1:
         st.subheader("Backup de Dados")
         
-        # Opções de backup
-        backup_options = st.multiselect(
-            "Selecione os dados para backup",
-            options=["Inventário", "Histórico de Consumo", "Configurações de Thomas", "Lista de Compras"],
-            default=["Inventário", "Histórico de Consumo", "Configurações de Thomas"]
-        )
+        st.markdown("Crie uma cópia de segurança completa do seu banco de dados.")
         
-        # Botão para gerar backup
-        if st.button("📥 Gerar Backup"):
-            if not backup_options:
-                st.error("Selecione pelo menos um tipo de dado para backup")
-            else:
-                try:
-                    # Criar arquivo de backup
-                    backup_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    backup_data = {}
+        # Botão para gerar backup do arquivo .db
+        if st.button("📥 Baixar Backup do Banco de Dados (.zip)"):
+            try:
+                backup_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                db_file_name = os.path.basename(db.db_path)
+                zip_file_name = f"geladeira_db_backup_{backup_timestamp}.zip"
+                
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    zip_file.write(db.db_path, arcname=db_file_name)
                     
-                    # Coletar dados
-                    if "Inventário" in backup_options:
-                        backup_data["inventario"] = db.carregar_inventario().to_dict()
-                        
-                    if "Histórico de Consumo" in backup_options:
-                        backup_data["consumo"] = db.obter_estatisticas_consumo(periodo_dias=365).to_dict()
-                        
-                    if "Configurações de Thomas" in backup_options:
-                        backup_data["thomas_config"] = {
-                            "restricoes": db.obter_restricoes_thomas(),
-                            "necessidades": db.obter_necessidades_thomas()
-                        }
-                        
-                    if "Lista de Compras" in backup_options:
-                        # Usar dados da sessão se disponíveis
-                        if "lista_compras" in st.session_state:
-                            backup_data["lista_compras"] = st.session_state.lista_compras
+                    # Adicionar README simples ao ZIP
+                    readme_text = f"""
+                    Backup Completo do Banco de Dados GELADEIRA
+                    Data: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+                    Arquivo: {db_file_name}
                     
-                    # Converter para JSON
-                    backup_json = json.dumps(backup_data, default=str)
-                    
-                    # Criar arquivo ZIP com o backup
-                    zip_buffer = io.BytesIO()
-                    with zipfile.ZipFile(zip_buffer, 'a', zipfile.ZIP_DEFLATED) as zip_file:
-                        zip_file.writestr(f"geladeira_backup_{backup_timestamp}.json", backup_json)
-                        
-                        # Adicionar README
-                        readme_text = f"""
-                        Backup do Sistema GELADEIRA
-                        Data: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-                        
-                        Este arquivo contém um backup dos seguintes dados:
-                        {', '.join(backup_options)}
-                        
-                        Para restaurar, use a função de restauração no sistema.
-                        """
-                        zip_file.writestr("README.txt", readme_text)
-                    
-                    # Oferecer download
-                    st.download_button(
-                        label="📥 Baixar Arquivo de Backup",
-                        data=zip_buffer.getvalue(),
-                        file_name=f"geladeira_backup_{backup_timestamp}.zip",
-                        mime="application/zip",
-                    )
-                    
-                    st.success("✅ Backup gerado com sucesso!")
-                except Exception as e:
-                    st.error(f"❌ Erro ao gerar backup: {str(e)}")
-                    st.code(traceback.format_exc())
+                    Este arquivo ZIP contém uma cópia completa do banco de dados SQLite.
+                    Para restaurar, use a função de restauração no sistema, enviando este arquivo ZIP
+                    ou o arquivo .db contido nele.
+                    """
+                    zip_file.writestr("README_backup.txt", readme_text)
+                
+                st.download_button(
+                    label="📥 Baixar Arquivo de Backup (.zip)",
+                    data=zip_buffer.getvalue(),
+                    file_name=zip_file_name,
+                    mime="application/zip",
+                )
+                st.success("✅ Backup do banco de dados gerado com sucesso!")
+            except AttributeError:
+                st.error("❌ Erro: O objeto 'db' não possui o atributo 'db_path'. Verifique a inicialização.")
+            except FileNotFoundError:
+                st.error(f"❌ Erro: Arquivo do banco de dados não encontrado em {db.db_path}")
+            except Exception as e:
+                st.error(f"❌ Erro ao gerar backup do banco de dados: {str(e)}")
+                st.code(traceback.format_exc())
     
     with col2:
-        st.subheader("Restaurar Dados")
+        st.subheader("Restaurar Dados do Banco de Dados")
         
-        uploaded_file = st.file_uploader("Selecione um arquivo de backup (.zip)", type=["zip"])
+        st.markdown("Restaure o sistema a partir de um arquivo de backup do banco de dados (`.db` ou `.zip` contendo um `.db`).")
+        st.warning("⚠️ **ATENÇÃO**: A restauração substituirá TODOS os dados atuais do sistema.")
+
+        uploaded_file = st.file_uploader(
+            "Selecione o arquivo de backup (.db ou .zip)", 
+            type=["db", "zip"]
+        )
         
         if uploaded_file is not None:
-            # Verificar o arquivo
             try:
-                # Ler arquivo ZIP
-                with zipfile.ZipFile(uploaded_file) as zip_ref:
-                    # Listar conteúdo
-                    file_list = zip_ref.namelist()
-                    
-                    # Encontrar arquivo JSON
-                    json_files = [f for f in file_list if f.endswith('.json')]
-                    
-                    if not json_files:
-                        st.error("❌ Arquivo de backup inválido: não contém dados JSON")
-                    else:
-                        # Extrair dados do primeiro arquivo JSON
-                        with zip_ref.open(json_files[0]) as json_file:
-                            backup_data = json.loads(json_file.read())
-                            
-                            # Mostrar resumo dos dados
-                            st.write("📋 Resumo dos dados de backup:")
-                            
-                            if "inventario" in backup_data:
-                                st.info(f"✓ Inventário: {len(backup_data['inventario'].get('ID', []))} itens")
-                                
-                            if "consumo" in backup_data:
-                                st.info(f"✓ Histórico de Consumo: {len(backup_data['consumo'].get('ID', []))} registros")
-                                
-                            if "thomas_config" in backup_data:
-                                st.info(f"✓ Configurações de Thomas: {len(backup_data['thomas_config'].get('restricoes', []))} restrições, {len(backup_data['thomas_config'].get('necessidades', []))} necessidades nutricionais")
-                                
-                            if "lista_compras" in backup_data:
-                                st.info(f"✓ Lista de Compras: {len(backup_data['lista_compras'])} itens")
-                            
-                            # Opções de restauração
-                            st.warning("⚠️ **ATENÇÃO**: A restauração substituirá os dados atuais.")
-                            
-                            # Selecionar tipos de dados a restaurar
-                            tipos_dados = []
-                            if "inventario" in backup_data:
-                                tipos_dados.append("Inventário")
-                            if "consumo" in backup_data:
-                                tipos_dados.append("Histórico de Consumo")
-                            if "thomas_config" in backup_data:
-                                tipos_dados.append("Configurações de Thomas")
-                            if "lista_compras" in backup_data:
-                                tipos_dados.append("Lista de Compras")
-                            
-                            dados_restaurar = st.multiselect(
-                                "Selecione os dados a restaurar",
-                                options=tipos_dados,
-                                default=tipos_dados
-                            )
-                            
-                            # Botão de restauração
-                            if st.button("🔄 Restaurar Dados Selecionados"):
-                                if not dados_restaurar:
-                                    st.error("Selecione pelo menos um tipo de dado para restaurar")
-                                else:
-                                    try:
-                                        restaurados = 0
-                                        
-                                        # Restaurar inventário
-                                        if "Inventário" in dados_restaurar and "inventario" in backup_data:
-                                            # Implementar função no DB para restaurar inventário
-                                            success, msg = db.restaurar_inventario(backup_data["inventario"])
-                                            if success:
-                                                st.success(f"✅ Inventário restaurado: {msg}")
-                                                restaurados += 1
-                                            else:
-                                                st.error(f"❌ Erro ao restaurar inventário: {msg}")
-                                        
-                                        # Restaurar histórico de consumo
-                                        if "Histórico de Consumo" in dados_restaurar and "consumo" in backup_data:
-                                            # Implementar função no DB para restaurar consumo
-                                            success, msg = db.restaurar_consumo(backup_data["consumo"])
-                                            if success:
-                                                st.success(f"✅ Histórico de consumo restaurado: {msg}")
-                                                restaurados += 1
-                                            else:
-                                                st.error(f"❌ Erro ao restaurar histórico de consumo: {msg}")
-                                        
-                                        # Restaurar configurações de Thomas
-                                        if "Configurações de Thomas" in dados_restaurar and "thomas_config" in backup_data:
-                                            # Implementar funções no DB para restaurar configurações de Thomas
-                                            success_r, msg_r = db.restaurar_restricoes_thomas(backup_data["thomas_config"].get("restricoes", []))
-                                            success_n, msg_n = db.restaurar_necessidades_thomas(backup_data["thomas_config"].get("necessidades", []))
-                                            
-                                            if success_r and success_n:
-                                                st.success("✅ Configurações de Thomas restauradas com sucesso")
-                                                restaurados += 1
-                                            else:
-                                                if not success_r:
-                                                    st.error(f"❌ Erro ao restaurar restrições: {msg_r}")
-                                                if not success_n:
-                                                    st.error(f"❌ Erro ao restaurar necessidades: {msg_n}")
-                                        
-                                        # Restaurar lista de compras
-                                        if "Lista de Compras" in dados_restaurar and "lista_compras" in backup_data:
-                                            # Atualizar lista na sessão
-                                            st.session_state.lista_compras = backup_data["lista_compras"]
-                                            st.success("✅ Lista de compras restaurada com sucesso")
-                                            restaurados += 1
-                                        
-                                        if restaurados > 0:
-                                            st.success(f"✅ Restauração concluída! {restaurados} conjunto(s) de dados restaurados.")
-                                            st.warning("⚠️ Recarregue a aplicação para ver os dados restaurados.")
-                                            if st.button("🔄 Recarregar Aplicação"):
-                                                st.rerun()
-                                        else:
-                                            st.warning("⚠️ Nenhum dado foi restaurado.")
-                                        
-                                    except Exception as e:
-                                        st.error(f"❌ Erro durante a restauração: {str(e)}")
-                                        st.code(traceback.format_exc())
+                temp_dir = "temp_restore_dir"
+                os.makedirs(temp_dir, exist_ok=True)
                 
+                backup_db_path = None
+
+                if uploaded_file.name.endswith(".zip"):
+                    with zipfile.ZipFile(uploaded_file) as zip_ref:
+                        # Encontrar o primeiro arquivo .db dentro do zip
+                        db_files_in_zip = [name for name in zip_ref.namelist() if name.endswith('.db')]
+                        if not db_files_in_zip:
+                            st.error("❌ O arquivo ZIP não contém um arquivo de banco de dados (.db).")
+                            return
+                        
+                        # Extrair o arquivo .db para um local temporário
+                        zip_ref.extract(db_files_in_zip[0], path=temp_dir)
+                        backup_db_path = os.path.join(temp_dir, db_files_in_zip[0])
+                        st.info(f"Arquivo .db extraído do ZIP: {db_files_in_zip[0]}")
+                elif uploaded_file.name.endswith(".db"):
+                    # Salvar o arquivo .db carregado diretamente em um local temporário
+                    backup_db_path = os.path.join(temp_dir, uploaded_file.name)
+                    with open(backup_db_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    st.info(f"Arquivo .db carregado: {uploaded_file.name}")
+                else:
+                    st.error("Tipo de arquivo não suportado. Por favor, envie um arquivo .db ou .zip.")
+                    return
+
+                if backup_db_path and os.path.exists(backup_db_path):
+                    if st.button("🔄 Restaurar Banco de Dados Agora"):
+                        # Importar a função de restauração do assistente
+                        from utils.assistente import restaurar_backup as assistente_restaurar_backup
+                        
+                        # Obter o caminho do banco de dados atual
+                        # É crucial que db.db_path seja o caminho correto para o arquivo .db ativo
+                        current_db_path = db.db_path 
+                        
+                        # Fechar a conexão atual antes de restaurar, se possível
+                        # Idealmente, o objeto db teria um método para fechar a conexão
+                        if hasattr(db, 'fechar') and callable(db.fechar):
+                            db.fechar()
+                            st.info("Conexão com o banco de dados atual fechada.")
+                        else:
+                            st.warning("Não foi possível fechar a conexão com o banco de dados automaticamente. A restauração prosseguirá, mas pode ser necessário reiniciar a aplicação.")
+
+                        success, msg = assistente_restaurar_backup(current_db_path, backup_db_path)
+                        
+                        if success:
+                            st.success(f"✅ Banco de dados restaurado com sucesso! {msg}")
+                            st.warning("⚠️ Por favor, recarregue a aplicação para aplicar as alterações.")
+                            if st.button("🔄 Recarregar Aplicação Agora"):
+                                st.rerun()
+                        else:
+                            st.error(f"❌ Erro ao restaurar o banco de dados: {msg}")
+                else:
+                    st.error("Não foi possível processar o arquivo de backup.")
+            
             except Exception as e:
-                st.error(f"❌ Erro ao processar arquivo: {str(e)}")
+                st.error(f"❌ Erro ao processar arquivo de backup: {str(e)}")
                 st.code(traceback.format_exc())
+            finally:
+                # Limpar diretório temporário
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
 
 def mostrar_configuracoes_alertas(db):
     st.header("⚠️ Configurações de Alertas")
@@ -343,14 +282,16 @@ def mostrar_configuracoes_alertas(db):
     
     habilitar_alertas_vencimento = st.checkbox(
         "Habilitar alertas de vencimento", 
-        value=config.get("habilitar_alertas_vencimento", True)
+        value=config.get("habilitar_alertas_vencimento", True),
+        help="Ative para receber notificações sobre itens próximos do vencimento."
     )
     
     dias_antecedencia = st.slider(
-        "Alertar com quantos dias de antecedência", 
+        "Dias de antecedência para alertas de vencimento", 
         min_value=1, 
         max_value=30, 
-        value=config.get("dias_antecedencia", 7),
+        value=config.get("dias_alerta_vencimento", 7),
+        help="Defina quantos dias antes do vencimento você deseja ser alertado.",
         disabled=not habilitar_alertas_vencimento
     )
     
